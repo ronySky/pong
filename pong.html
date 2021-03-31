@@ -1,0 +1,266 @@
+<html>
+	<head>
+		<style>
+			canvas {
+				border:1px solid black;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas id="folha" height="500" width="1000"/>
+		
+		<script>
+			var game = new Game();
+			var interval;
+			window.onload = function() {
+				interval = setInterval(executar, game.rate);
+			}
+			window.addEventListener("keydown", this.checkKey, false);
+			window.addEventListener("mousemove", checkMouse);
+		
+			var canvas = document.getElementById("folha");
+			var ctx = canvas.getContext("2d");
+			
+			var field = new Field(canvas);
+			var ball = new Ball(100,Math.floor(Math.random() * field.height),5);
+			
+			var padA = new Pad(10, 80, field.xPadding, field.height/2, 10 + field.xPadding);
+			var padB = new Pad(10, 80, (field.width - 10 - field.xPadding), field.height/2, field.width - 10 - field.xPadding);
+			
+			var players = [new Player("Player One", padA, field.width, false, true), new Player("Player Two", padB, 0, true, false)];
+			
+			var menu = new Menu(canvas);
+			
+			function executar() {
+					drawField(field);
+					checkHits(ball, players);
+					checkGoal(ball, players);
+					drawBall(ball, field);
+					drawPlayers(field, players);
+				if (game.pause){
+					drawMenu(menu);
+				} else {
+					moveBall(ball, field);
+					movePlayers(players, ball);
+				}
+			}
+			
+			function drawField(field){
+				ctx.fillStyle = field.bgCcolor;
+				ctx.fillRect(0, 0, field.width, field.height);
+				ctx.fillStyle = field.objColor;
+				ctx.fillRect((field.width/2 - field.lineWidth/2), 0, field.lineWidth, field.height);
+			}
+			
+			function drawBall(ball, field){
+				ctx.globalAlpha = 1;
+				ctx.fillStyle = field.objColor;
+				ctx.beginPath();
+				ctx.arc(ball.xCoord, ball.yCoord, ball.diameter, 0, 2*Math.PI);
+				ctx.fill();
+			}
+
+			function moveBall(ball, field){
+				if (ball.yCoord <= 0 || ball.yCoord >= field.height){
+						ball.ySpeed = -ball.ySpeed;
+				}
+				ball.yCoord += ball.ySpeed;
+				ball.xCoord += ball.xSpeed;
+			}
+			
+			function drawPlayers(field, players){
+				ctx.fillStyle= field.objColor;
+				ctx.textAlign = "center";
+				ctx.font = "30px Arial";
+				
+				for (var i = 0; i < players.length; i++){
+					let player = players[i];
+					let xCoord = 0;
+					if (player.right) {
+						xCoord = field.width/4;	
+					} else {
+						xCoord = field.width*3/4;
+					}
+					ctx.fillText(player.name, xCoord, field.yPadding);
+					ctx.fillText(player.score, xCoord, field.yPadding*2);
+					
+					drawPad(player.pad, field);
+				}
+			}
+			
+			function drawPad(pad, field){
+				if (pad.yCoord < 0){
+						pad.yCoord = 0;
+				}
+				else if (pad.yCoord + pad.height > field.height){
+					pad.yCoord = field.height - pad.height;
+				}
+					
+				ctx.fillRect(pad.xCoord, pad.yCoord, pad.width, pad.height);
+				pad.hitRange = new Range(pad.yCoord, pad.yCoord + pad.height);
+			}
+			
+			function drawMenu(menu){
+				ctx.globalAlpha = 0.2
+				ctx.fillStyle = menu.bgColor;
+				ctx.fillRect(0, 0, menu.width, menu.height);
+				
+				ctx.fillStyle = menu.textColor;
+				ctx.textAlign = "center";
+				ctx.font = "30px Arial";
+				ctx.fillText("PAUSED", menu.width/2, menu.height/2);
+			}
+			
+			function checkKey(e){
+				var key = e.keyCode;
+				switch (key){
+					case 13 : game.pause = !game.pause; break;
+					case 38 : 
+					case 40 : padB.ySpeed = -padB.ySpeed; break;
+					case 83 : 
+					case 87 : padA.ySpeed = -padA.ySpeed; break;
+				}
+			}
+			
+			function checkMouse(e){
+				if (!game.pause) {
+					for (var i = 0; i < players.length; i++){
+						let player = players[i];
+						if (!player.auto){
+							player.pad.yCoord = e.clientY - player.pad.height / 2;
+						}
+					}
+				}
+			}
+			
+			function checkGoal(ball, players){
+				for (var i = 0; i < players.length; i++){
+					let player = players[i];
+					if ((player.right && ball.xCoord >= player.goalBarrier) || (!player.right && ball.xCoord <= player.goalBarrier)){
+						player.score++;
+						ball.hitCount = 0;
+						showGoal();
+					}
+				}
+				
+			}
+			
+			function showGoal(){
+				ctx.font = "60px Arial";
+				ctx.fillText("GOAL", field.width/2, field.height/2);
+				game.pause = true;
+				ball = new Ball(Math.floor(Math.random() * field.width/2), Math.floor(Math.random() * field.height), 5);
+			}
+			
+			function checkHits(ball, players){
+				for (var i = 0; i < players.length; i++){
+				let player = players[i];
+				let pad = player.pad;
+				if (pad.hitRange.has(ball.yCoord) && ((player.right && ball.xCoord <= pad.hitBarrier) || (!player.right && ball.xCoord >= pad.hitBarrier))){
+						ball.hitCount++;
+						ball.xSpeed = -ball.xSpeed;
+						if (ball.hitCount == 5){
+							ball.hitCount = 0;
+							ball.xSpeed *= 1.3;
+						}
+						console.log("Pré: " + ball.ySpeed);
+						console.log("Ycoord: " + ball.yCoord);
+						console.log("Diff: " + pad.hitRange.diff(ball.yCoord));
+						console.log("Effect: " + pad.effect);
+						let diff = pad.hitRange.diff(ball.yCoord);
+						if (diff == 0){
+							diff = 1;
+						}
+						let newSpeed = diff * pad.effect;
+						
+							if (ball.maxSpeed.has(newSpeed)) {
+								ball.ySpeed = newSpeed;
+							}
+						
+						console.log("Pós: " + ball.ySpeed);
+					}
+				}
+			}
+			
+			function movePlayers(players, ball){
+				for (var i = 0; i < players.length; i++){
+					let player = players[i];
+					if (player.auto){
+						let pad = player.pad;
+						if (ball.yCoord > pad.yCoord + pad.height/2){
+							pad.yCoord++;
+						}
+						else {
+							pad.yCoord--;
+						}
+					}
+				}
+			}
+			
+			function Game(){
+				this.pause = false;
+				this.rate = 1000/1000;
+			}
+								
+			function Field(canvas){
+				this.bgCcolor = "#286047";
+				this.height = canvas.height;
+				this.width = canvas.width;
+				this.objColor = "#FFFFFF";
+				this.lineWidth = 5;
+				this.xPadding =2;
+				this.yPadding = 40;
+			}
+			
+			function Ball(xCoord, yCoord, diameter){
+				this.xCoord = xCoord;
+				this.yCoord = yCoord;
+				this.diameter = diameter;
+				this.xSpeed = 1;
+				this.ySpeed = 1;
+				this.maxSpeed = new Range(-2, 2);
+				this.hitCount = 0;
+			}
+			
+			function Pad(width, height, xCoord, yCoord, hitBarrier){
+				this.width = width;
+				this.height = height;
+				this.xCoord = xCoord;
+				this.yCoord = yCoord;
+				this.ySpeed = 1;
+				this.hitBarrier = hitBarrier;
+				this.hitRange = new Range(0,0);
+				this.effect = 0.5;
+			}
+			
+			function Range(begin, end) {
+				this.low = begin;
+				this.hi = end;
+				this.has = function(n) {
+					return this.low <= n && n <= this.hi;
+				}
+				this.diff = function(n) {
+					return n - (this.low + this.hi)/2;
+				}
+			}
+			
+			function Player(name, pad, goalBarrier, auto, right){
+				this.name = name;
+				this.pad = pad;
+				this.goalBarrier = goalBarrier;
+				this.auto = auto;
+				this.right = right;
+
+				this.score = 0;
+			}
+			
+			function Menu(canvas){
+				this.width = canvas.width;
+				this.height = canvas.height;
+				this.bgColor = "#000000";
+				this.textColor = "#FFFFFF";
+				this.borderColor = "#fce303";
+			}
+		</script>
+	</body>
+<html>
